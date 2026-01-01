@@ -12,7 +12,7 @@ export default function Navbar() {
           <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-1.5 rounded-lg shadow-lg shadow-indigo-500/20">
             <Zap size={22} fill="white" />
           </div>
-          ESRGAN
+          Enhance
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">
             AI
           </span>
