@@ -1,7 +1,6 @@
 "use client";
-
-import { useState } from "react";
 import { Sparkles, Download, ArrowRight, Loader2 } from "lucide-react";
+import { useState } from "react";
 
 interface Props {
   onEnhance: () => void;
@@ -12,32 +11,29 @@ interface Props {
 export default function ActionBar({ onEnhance, disabled, enhancedUrl }: Props) {
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // This is the new download logic
   const handleDownload = async () => {
     if (!enhancedUrl) return;
-
     setIsDownloading(true);
     try {
-      // 1. Fetch the image data from the Cloudinary URL
+      // 1. Fetch the image as a blob
       const response = await fetch(enhancedUrl);
-      const blob = await response.blob(); // 2. Convert the response to a Blob
+      const blob = await response.blob();
 
-      // 3. Create a temporary local URL for the Blob
-      const blobUrl = URL.createObjectURL(blob);
-
-      // 4. Create a hidden anchor element to trigger the download
+      // 2. Create a temporary link to trigger download
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = blobUrl;
-      link.download = "enhanced-image.png"; // Set the desired filename here
+      link.href = url;
+      link.download = `enhanced-${Date.now()}.png`; // Unique filename
       document.body.appendChild(link);
-      link.click(); // 5. Programmatically click the link
+      link.click();
 
-      // 6. Clean up by removing the link and revoking the Blob URL
+      // 3. Cleanup
       document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
+      window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Download failed", error);
-      alert("Could not download the image.");
+      console.error("Download failed:", error);
+      // Fallback: Open in new tab if blob fails
+      window.open(enhancedUrl, "_blank");
     } finally {
       setIsDownloading(false);
     }
@@ -59,21 +55,18 @@ export default function ActionBar({ onEnhance, disabled, enhancedUrl }: Props) {
         </button>
       ) : (
         <div className="flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300">
-          {/* We changed the 'a' tag to a 'button' and use the onClick handler */}
           <button
             onClick={handleDownload}
             disabled={isDownloading}
-            className="flex items-center gap-3 px-10 py-5 rounded-2xl bg-white text-slate-950 font-bold text-lg hover:bg-slate-100 transition-all shadow-xl active:scale-95 disabled:opacity-70"
+            className="flex items-center gap-3 px-10 py-5 rounded-2xl bg-white text-slate-950 font-bold text-lg hover:bg-slate-100 transition-all shadow-xl active:scale-95 disabled:opacity-70 disabled:cursor-wait"
           >
             {isDownloading ? (
               <>
-                Downloading...
-                <Loader2 size={20} className="animate-spin" />
+                Downloading... <Loader2 size={20} className="animate-spin" />
               </>
             ) : (
               <>
-                Download Result
-                <Download size={20} />
+                Download Result <Download size={20} />
               </>
             )}
           </button>
