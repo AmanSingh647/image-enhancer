@@ -39,3 +39,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# --- Backend Ignores ---
+
+# Ignore the heavy model weights
+backend/models/*.pth
+backend/models/*.pt
+backend/models/*.bin
+
+# Ignore Python virtual environment (CRITICAL: Never push venv)
+backend/venv/
+venv/
+
+# Ignore Python cache files
+backend/__pycache__/
+**/__pycache__/
+*.py[cod]
