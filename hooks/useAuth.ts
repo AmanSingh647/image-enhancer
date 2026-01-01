@@ -13,7 +13,7 @@ export function useAuth() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const login = () => {
-    setUser({ name: "Aman Singh" });
+    setUser({ name: "User" });
   };
 
   const logout = () => {
