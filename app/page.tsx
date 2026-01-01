@@ -36,33 +36,32 @@ export default function Page() {
     setIsProcessing(true);
 
     try {
-      // 1. Upload Original to Cloudinary immediately
-      const originalUrl = await uploadImageToCloudinary(file);
+      // 1. Upload Original to Cloudinary (Keep this for history)
+      const originalCloudUrl = await uploadImageToCloudinary(file);
 
-      // 2. Send to your AI Backend
+      // 2. Send File to Python Backend
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", file); // Must match the @app.post parameter name
+
       const res = await fetch("http://127.0.0.1:8000/enhance", {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) throw new Error("AI Enhancement failed");
+      if (!res.ok) throw new Error("Python Backend Failed");
 
-      // 3. Get the enhanced blob and upload IT to Cloudinary
-      const enhancedBlob = await res.blob();
-      const enhancedUrl = await uploadImageToCloudinary(enhancedBlob);
+      const data = await res.json();
+      const enhancedCloudUrl = data.enhanced_url; // Backend returns the Cloudinary URL directly
 
-      // 4. Update the UI
-      setEnhancedUrl(enhancedUrl);
+      setEnhancedUrl(enhancedCloudUrl);
 
-      // 5. Save the PERMANENT Cloudinary URLs to Firebase history
+      // 3. Save to Firestore History
       if (user) {
-        await addHistory(originalUrl, enhancedUrl);
+        await addHistory(originalCloudUrl, enhancedCloudUrl);
       }
-    } catch (error) {
-      console.error("Error in enhancement flow:", error);
-      alert("Something went wrong during enhancement.");
+    } catch (e) {
+      console.error(e);
+      alert("Enhancement failed! Is the Python server running?");
     } finally {
       setIsProcessing(false);
     }
