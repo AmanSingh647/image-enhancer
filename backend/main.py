@@ -62,6 +62,8 @@ try:
     weights = fix_model_keys(weights)
     model.load_state_dict(weights, strict=True)
     model.eval()
+    if device.type == 'cuda':
+        model = model.half()
     model = model.to(device)
     print("✅ Model loaded successfully!")
 
@@ -70,46 +72,38 @@ except Exception as e:
 
 # --- 3. TILING FUNCTION (Saves RAM) ---
 def tile_process(img, scale=4, tile_size=192, tile_pad=10):
-    """
-    Splits image into tiles, processes them, and merges them.
-    Includes fix for small edge tiles.
-    """
     _, _, h, w = img.shape
     output_h, output_w = h * scale, w * scale
     
-    # Empty tensor for result
     output = torch.zeros((1, 3, output_h, output_w), device=device)
 
-    # Loop through tiles
+    # --- SPEED UP FIX: Convert input to Half if on GPU ---
+    if device.type == 'cuda':
+        img = img.half()
+    # ----------------------------------------------------
+
     for i in range(0, h, tile_size):
         for j in range(0, w, tile_size):
-            # 1. Get tile coordinates
+            # ... (Keep existing coordinate calculation logic) ...
             h_start = i
             w_start = j
             h_end = min(h_start + tile_size, h)
             w_end = min(w_start + tile_size, w)
 
-            # 2. Extract input tile
             input_tile = img[:, :, h_start:h_end, w_start:w_end]
 
-            # 3. Add Padding
+            # ... (Keep existing padding logic) ...
             pad_h_top = tile_pad if h_start > 0 else 0
             pad_h_bot = tile_pad if h_end < h else 0
             pad_w_left = tile_pad if w_start > 0 else 0
             pad_w_right = tile_pad if w_end < w else 0
 
-            # --- CRASH FIX START ---
-            # 'reflect' padding crashes if the tile is smaller than the padding (e.g. 4px tile vs 10px pad)
-            # We check if the tile is large enough. If not, we use 'replicate' mode.
+            # Dynamic padding mode logic
             current_h = h_end - h_start
             current_w = w_end - w_start
-            
-            # Strict condition: Dimension must be strictly > padding for reflect
             can_reflect = (current_h > pad_h_top) and (current_h > pad_h_bot) and \
                           (current_w > pad_w_left) and (current_w > pad_w_right)
-            
             pad_mode = 'reflect' if can_reflect else 'replicate'
-            # --- CRASH FIX END ---
 
             input_tile_padded = F.pad(input_tile, (pad_w_left, pad_w_right, pad_h_top, pad_h_bot), pad_mode)
 
@@ -117,7 +111,7 @@ def tile_process(img, scale=4, tile_size=192, tile_pad=10):
             with torch.no_grad():
                 output_tile_padded = model(input_tile_padded)
 
-            # 5. Crop the padding
+            # ... (Keep existing cropping and placement logic) ...
             crop_h_top = pad_h_top * scale
             crop_h_bot = pad_h_bot * scale
             crop_w_left = pad_w_left * scale
@@ -125,17 +119,16 @@ def tile_process(img, scale=4, tile_size=192, tile_pad=10):
             
             h_end_out = output_tile_padded.shape[2] - crop_h_bot
             w_end_out = output_tile_padded.shape[3] - crop_w_right
-            
             output_tile = output_tile_padded[:, :, crop_h_top:h_end_out, crop_w_left:w_end_out]
 
-            # 6. Place into final image
             out_h_start = h_start * scale
             out_w_start = w_start * scale
             
+            # Note: output tensor is float32, output_tile is float16. 
+            # PyTorch handles this assignment automatically, or you can cast back:
             output[:, :, out_h_start:out_h_start + output_tile.shape[2], 
-                         out_w_start:out_w_start + output_tile.shape[3]] = output_tile
+                         out_w_start:out_w_start + output_tile.shape[3]] = output_tile.float()
             
-            # Clear cache
             del input_tile, input_tile_padded, output_tile_padded, output_tile
             torch.cuda.empty_cache()
 
