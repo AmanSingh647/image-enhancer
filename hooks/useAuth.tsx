@@ -6,6 +6,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
+  User,
 } from "firebase/auth";
 import {
   collection,
@@ -14,33 +15,58 @@ import {
   onSnapshot,
   orderBy,
   addDoc,
+  DocumentData,
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 
-const AuthContext = createContext<any>(null);
+export interface HistoryItem {
+  id: string;
+  userId: string;
+  originalUrl: string;
+  enhancedUrl: string;
+  createdAt: string;
+  status: string;
+}
+
+interface AuthContextType {
+  user: User | null;
+  history: HistoryItem[];
+  loading: boolean;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
+  addHistory: (originalUrl: string, enhancedUrl: string) => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
       setLoading(false);
-      if (user) {
-        // Fetch History
+
+      if (firebaseUser) {
         const q = query(
           collection(db, "enhancements"),
-          where("userId", "==", user.uid),
+          where("userId", "==", firebaseUser.uid),
           orderBy("createdAt", "desc")
         );
-        onSnapshot(q, (snapshot) => {
+        const unsub = onSnapshot(q, (snapshot) => {
           setHistory(
-            snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+            snapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...(doc.data() as Omit<HistoryItem, "id">),
+            }))
           );
         });
+        return unsub;
+      } else {
+        setHistory([]);
       }
     });
     return () => unsubscribe();
@@ -52,36 +78,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push("/");
   };
 
+  const logout = async () => {
+    await signOut(auth);
+    setHistory([]);
+  };
+
   const addHistory = async (originalUrl: string, enhancedUrl: string) => {
     if (!user) return;
-
     try {
-      await addDoc(collection(db, "enhancements"), {
+      const entry: Omit<HistoryItem, "id"> = {
         userId: user.uid,
-        originalUrl: originalUrl, // Cloudinary link
-        enhancedUrl: enhancedUrl, // Cloudinary link
+        originalUrl,
+        enhancedUrl,
         createdAt: new Date().toISOString(),
         status: "completed",
-      });
+      };
+      await addDoc(collection(db, "enhancements"), entry as DocumentData);
     } catch (e) {
-      console.error("Error adding document: ", e);
+      console.error("Error saving history:", e);
     }
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        history,
-        login,
-        logout: () => signOut(auth),
-        addHistory,
-        loading,
-      }}
-    >
+    <AuthContext.Provider value={{ user, history, login, logout, addHistory, loading }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth(): AuthContextType {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  return ctx;
+}
