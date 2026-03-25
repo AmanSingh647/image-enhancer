@@ -15,11 +15,18 @@ import { db } from "@/lib/firebase";
 import { doc, deleteDoc } from "firebase/firestore";
 import { HistoryItem } from "@/hooks/useAuth";
 import CompareSlider from "@/components/CompareSlider";
+import { ToastMessage } from "@/components/Toast";
 
-export default function HistorySection({ items }: { items: HistoryItem[] }) {
+interface Props {
+  items: HistoryItem[];
+  onToast: (type: ToastMessage["type"], message: string) => void;
+}
+
+export default function HistorySection({ items, onToast }: Props) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [compareItem, setCompareItem] = useState<HistoryItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDownload = async (url: string, id: string) => {
     setDownloadingId(id);
@@ -34,6 +41,7 @@ export default function HistorySection({ items }: { items: HistoryItem[] }) {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
+      onToast("success", "Image downloaded successfully.");
     } catch {
       window.open(url, "_blank");
     } finally {
@@ -42,23 +50,51 @@ export default function HistorySection({ items }: { items: HistoryItem[] }) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this from your history?")) return;
+    setDeletingId(id);
     try {
       await deleteDoc(doc(db, "enhancements", id));
+      onToast("info", "Removed from history.");
     } catch (error) {
       console.error("Error deleting document:", error);
-      alert("Failed to delete. Check console.");
+      onToast("error", "Failed to delete. Please try again.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
   return (
     <>
       <div className="mt-24 border-t border-slate-800 pt-12 animate-in fade-in slide-in-from-bottom-10 duration-700">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="p-2 bg-indigo-500/10 rounded-lg">
-            <Clock className="text-indigo-500" size={24} />
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-500/10 rounded-lg">
+              <Clock className="text-indigo-500" size={24} />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Your Enhancement History</h2>
           </div>
-          <h2 className="text-2xl font-bold text-white">Your Enhancement History</h2>
+
+          {/* Stats banner */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium">
+              <span className="text-white font-bold">{items.length}</span> image{items.length !== 1 ? "s" : ""} enhanced
+            </span>
+            {items.length > 0 && (
+              <span className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium">
+                Since{" "}
+                <span className="text-white font-bold">
+                  {new Date(items[items.length - 1].createdAt).toLocaleDateString()}
+                </span>
+              </span>
+            )}
+            {items.length > 0 && (
+              <span className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium">
+                Latest{" "}
+                <span className="text-white font-bold">
+                  {new Date(items[0].createdAt).toLocaleDateString()}
+                </span>
+              </span>
+            )}
+          </div>
         </div>
 
         {items.length === 0 ? (
@@ -131,10 +167,15 @@ export default function HistorySection({ items }: { items: HistoryItem[] }) {
                     {/* Delete */}
                     <button
                       onClick={() => handleDelete(item.id)}
-                      className="p-3 bg-red-500/20 hover:bg-red-600 text-red-200 hover:text-white rounded-full transition-all backdrop-blur-md border border-red-500/30 hover:scale-110"
+                      disabled={deletingId === item.id}
+                      className="p-3 bg-red-500/20 hover:bg-red-600 text-red-200 hover:text-white rounded-full transition-all backdrop-blur-md border border-red-500/30 hover:scale-110 disabled:opacity-60 disabled:cursor-wait"
                       title="Delete"
                     >
-                      <Trash2 size={18} />
+                      {deletingId === item.id ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={18} />
+                      )}
                     </button>
                   </div>
                 </div>
