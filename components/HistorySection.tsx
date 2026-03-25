@@ -71,7 +71,7 @@ export default function HistorySection({ items }: { items: HistoryItem[] }) {
                 className="group relative bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 hover:border-indigo-500/50 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300"
               >
                 {/* Image area */}
-                <div className="aspect-square w-full relative bg-slate-950">
+                <div className="aspect-square w-full relative bg-slate-950 overflow-hidden">
                   {imageErrors[item.id] ? (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-2 p-4 text-center">
                       <ImageOff size={32} />
