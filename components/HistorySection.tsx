@@ -65,11 +65,36 @@ export default function HistorySection({ items, onToast }: Props) {
   return (
     <>
       <div className="mt-24 border-t border-slate-800 pt-12 animate-in fade-in slide-in-from-bottom-10 duration-700">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="p-2 bg-indigo-500/10 rounded-lg">
-            <Clock className="text-indigo-500" size={24} />
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-500/10 rounded-lg">
+              <Clock className="text-indigo-500" size={24} />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Your Enhancement History</h2>
           </div>
-          <h2 className="text-2xl font-bold text-white">Your Enhancement History</h2>
+
+          {/* Stats banner */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium">
+              <span className="text-white font-bold">{items.length}</span> image{items.length !== 1 ? "s" : ""} enhanced
+            </span>
+            {items.length > 0 && (
+              <span className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium">
+                Since{" "}
+                <span className="text-white font-bold">
+                  {new Date(items[items.length - 1].createdAt).toLocaleDateString()}
+                </span>
+              </span>
+            )}
+            {items.length > 0 && (
+              <span className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 font-medium">
+                Latest{" "}
+                <span className="text-white font-bold">
+                  {new Date(items[0].createdAt).toLocaleDateString()}
+                </span>
+              </span>
+            )}
+          </div>
         </div>
 
         {items.length === 0 ? (

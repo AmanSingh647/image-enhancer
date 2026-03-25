@@ -1,33 +1,35 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, ZoomIn } from "lucide-react";
 
 interface Props {
   isProcessing: boolean;
   imageUrl: string | null;
   processingTime?: number | null;
   outputDimensions?: { width: number; height: number } | null;
+  filterStyle?: string;
+  onZoom?: () => void;
 }
 
-export default function EnhancedPreview({ isProcessing, imageUrl, processingTime, outputDimensions }: Props) {
+export default function EnhancedPreview({
+  isProcessing,
+  imageUrl,
+  processingTime,
+  outputDimensions,
+  filterStyle,
+  onZoom,
+}: Props) {
   const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (isProcessing) {
       setElapsed(0);
-      intervalRef.current = setInterval(() => {
-        setElapsed((s) => s + 1);
-      }, 1000);
+      intervalRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
     } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isProcessing]);
 
   return (
@@ -43,24 +45,18 @@ export default function EnhancedPreview({ isProcessing, imageUrl, processingTime
             <span className="text-2xl font-bold text-white tabular-nums">{elapsed}s</span>
             <span className="text-xs text-slate-500">elapsed — large images take 15–60s</span>
           </div>
-          {/* Processing steps hint */}
           <div className="flex flex-col gap-1.5 mt-2 w-full max-w-[200px]">
             {["Decoding image", "Tiling & upscaling", "Uploading result"].map((step, i) => (
               <div key={step} className="flex items-center gap-2">
-                <div
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    elapsed > i * 4 ? "bg-indigo-400" : "bg-slate-700"
-                  } transition-colors duration-500`}
-                />
-                <span className={`text-xs ${elapsed > i * 4 ? "text-slate-300" : "text-slate-600"} transition-colors duration-500`}>
-                  {step}
-                </span>
+                <div className={`w-1.5 h-1.5 rounded-full transition-colors duration-500 ${elapsed > i * 4 ? "bg-indigo-400" : "bg-slate-700"}`} />
+                <span className={`text-xs transition-colors duration-500 ${elapsed > i * 4 ? "text-slate-300" : "text-slate-600"}`}>{step}</span>
               </div>
             ))}
           </div>
         </div>
       ) : imageUrl ? (
         <>
+          {/* Badges */}
           <div className="absolute top-4 left-4 z-10 flex flex-col gap-1.5">
             <span className="px-3 py-1 rounded-full bg-indigo-500 backdrop-blur-md text-[10px] uppercase tracking-widest font-bold text-white border border-indigo-400/50 flex items-center gap-1">
               <Sparkles size={10} /> AI Enhanced
@@ -76,10 +72,24 @@ export default function EnhancedPreview({ isProcessing, imageUrl, processingTime
               </span>
             )}
           </div>
+
+          {/* Zoom button */}
+          {onZoom && (
+            <button
+              onClick={onZoom}
+              className="absolute top-4 right-4 z-10 p-2 bg-black/50 hover:bg-indigo-600 backdrop-blur-md text-white rounded-xl border border-white/10 transition-all hover:scale-105"
+              title="Zoom in"
+            >
+              <ZoomIn size={16} />
+            </button>
+          )}
+
           <img
             src={imageUrl}
-            className="w-full h-full object-contain bg-slate-950"
+            className="w-full h-full object-contain bg-slate-950 cursor-zoom-in"
+            style={{ filter: filterStyle }}
             alt="Enhanced"
+            onClick={onZoom}
           />
         </>
       ) : (

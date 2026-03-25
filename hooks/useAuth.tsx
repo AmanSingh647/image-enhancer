@@ -15,6 +15,9 @@ import {
   onSnapshot,
   orderBy,
   addDoc,
+  deleteDoc,
+  writeBatch,
+  doc,
   DocumentData,
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
@@ -35,6 +38,7 @@ interface AuthContextType {
   login: () => Promise<void>;
   logout: () => Promise<void>;
   addHistory: (originalUrl: string, enhancedUrl: string) => Promise<void>;
+  clearHistory: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -99,8 +103,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const clearHistory = async () => {
+    if (!user || history.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      history.forEach((item) => batch.delete(doc(db, "enhancements", item.id)));
+      await batch.commit();
+    } catch (e) {
+      console.error("Error clearing history:", e);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, history, login, logout, addHistory, loading }}>
+    <AuthContext.Provider value={{ user, history, login, logout, addHistory, clearHistory, loading }}>
       {children}
     </AuthContext.Provider>
   );
