@@ -64,7 +64,8 @@ export default function Page() {
       formData.append("file", file);
       formData.append("scale", String(scale));
 
-      const res = await fetch("http://127.0.0.1:8000/enhance", {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:8000";
+      const res = await fetch(`${backendUrl}/enhance`, {
         method: "POST",
         body: formData,
       });
@@ -155,7 +156,7 @@ export default function Page() {
 
         {/* History — only for logged-in users */}
         {user && history.length > 0 && (
-          <HistorySection items={history} />
+          <HistorySection items={history} onToast={addToast} />
         )}
       </main>
 

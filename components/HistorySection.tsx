@@ -15,11 +15,18 @@ import { db } from "@/lib/firebase";
 import { doc, deleteDoc } from "firebase/firestore";
 import { HistoryItem } from "@/hooks/useAuth";
 import CompareSlider from "@/components/CompareSlider";
+import { ToastMessage } from "@/components/Toast";
 
-export default function HistorySection({ items }: { items: HistoryItem[] }) {
+interface Props {
+  items: HistoryItem[];
+  onToast: (type: ToastMessage["type"], message: string) => void;
+}
+
+export default function HistorySection({ items, onToast }: Props) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const [compareItem, setCompareItem] = useState<HistoryItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDownload = async (url: string, id: string) => {
     setDownloadingId(id);
@@ -34,6 +41,7 @@ export default function HistorySection({ items }: { items: HistoryItem[] }) {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
+      onToast("success", "Image downloaded successfully.");
     } catch {
       window.open(url, "_blank");
     } finally {
@@ -42,12 +50,15 @@ export default function HistorySection({ items }: { items: HistoryItem[] }) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this from your history?")) return;
+    setDeletingId(id);
     try {
       await deleteDoc(doc(db, "enhancements", id));
+      onToast("info", "Removed from history.");
     } catch (error) {
       console.error("Error deleting document:", error);
-      alert("Failed to delete. Check console.");
+      onToast("error", "Failed to delete. Please try again.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -131,10 +142,15 @@ export default function HistorySection({ items }: { items: HistoryItem[] }) {
                     {/* Delete */}
                     <button
                       onClick={() => handleDelete(item.id)}
-                      className="p-3 bg-red-500/20 hover:bg-red-600 text-red-200 hover:text-white rounded-full transition-all backdrop-blur-md border border-red-500/30 hover:scale-110"
+                      disabled={deletingId === item.id}
+                      className="p-3 bg-red-500/20 hover:bg-red-600 text-red-200 hover:text-white rounded-full transition-all backdrop-blur-md border border-red-500/30 hover:scale-110 disabled:opacity-60 disabled:cursor-wait"
                       title="Delete"
                     >
-                      <Trash2 size={18} />
+                      {deletingId === item.id ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={18} />
+                      )}
                     </button>
                   </div>
                 </div>
