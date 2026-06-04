@@ -3,8 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
-import torch
-import torch.nn.functional as F
 import numpy as np
 import cv2
 import io
@@ -12,16 +10,26 @@ import os
 import time
 from collections import defaultdict
 
+try:
+    import torch
+    import torch.nn.functional as F
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+    F = None
+
 load_dotenv()
 
 # --- 1. CONFIGURATION ---
 app = FastAPI(title="ESRGAN Image Enhancer API")
 
-ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:3000")
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+ALLOWED_ORIGINS = list({o.strip() for o in _raw_origins.split(",") if o.strip()} | {"http://localhost:3000"})
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[ALLOWED_ORIGIN, "http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,46 +59,64 @@ def check_rate_limit(request: Request):
     _request_log[ip].append(now)
 
 # --- 3. LOAD MODEL ---
-from rrdbnet_arch import RRDBNet
+USE_ONNX = False
+ort_session = None
+model = None
+device = None
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using device: {device}")
+if TORCH_AVAILABLE:
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"PyTorch available. Using device: {device}")
 
-model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+    try:
+        from rrdbnet_arch import RRDBNet
 
-try:
-    loadnet = torch.load('models/net_g_latest.pth', map_location=device)
+        def fix_model_keys(state_dict):
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                new_key = key
+                if "conv_RRDB_trunk" in new_key: new_key = new_key.replace("conv_RRDB_trunk", "trunk_conv")
+                elif "conv_body" in new_key: new_key = new_key.replace("conv_body", "trunk_conv")
+                if "body." in new_key: new_key = new_key.replace("body.", "RRDB_trunk.")
+                if "conv_up1" in new_key: new_key = new_key.replace("conv_up1", "upconv1")
+                if "conv_up2" in new_key: new_key = new_key.replace("conv_up2", "upconv2")
+                if "conv_hr" in new_key: new_key = new_key.replace("conv_hr", "HRconv")
+                if "rdb1" in new_key: new_key = new_key.replace("rdb1", "RDB1")
+                if "rdb2" in new_key: new_key = new_key.replace("rdb2", "RDB2")
+                if "rdb3" in new_key: new_key = new_key.replace("rdb3", "RDB3")
+                new_state_dict[new_key] = value
+            return new_state_dict
 
-    def fix_model_keys(state_dict):
-        new_state_dict = {}
-        for key, value in state_dict.items():
-            new_key = key
-            if "conv_RRDB_trunk" in new_key: new_key = new_key.replace("conv_RRDB_trunk", "trunk_conv")
-            elif "conv_body" in new_key: new_key = new_key.replace("conv_body", "trunk_conv")
-            if "body." in new_key: new_key = new_key.replace("body.", "RRDB_trunk.")
-            if "conv_up1" in new_key: new_key = new_key.replace("conv_up1", "upconv1")
-            if "conv_up2" in new_key: new_key = new_key.replace("conv_up2", "upconv2")
-            if "conv_hr" in new_key: new_key = new_key.replace("conv_hr", "HRconv")
-            if "rdb1" in new_key: new_key = new_key.replace("rdb1", "RDB1")
-            if "rdb2" in new_key: new_key = new_key.replace("rdb2", "RDB2")
-            if "rdb3" in new_key: new_key = new_key.replace("rdb3", "RDB3")
-            new_state_dict[new_key] = value
-        return new_state_dict
+        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+        loadnet = torch.load('models/net_g_latest.pth', map_location=device)
 
-    if 'params_ema' in loadnet: weights = loadnet['params_ema']
-    elif 'params' in loadnet: weights = loadnet['params']
-    else: weights = loadnet
+        if 'params_ema' in loadnet: weights = loadnet['params_ema']
+        elif 'params' in loadnet: weights = loadnet['params']
+        else: weights = loadnet
 
-    weights = fix_model_keys(weights)
-    model.load_state_dict(weights, strict=True)
-    model.eval()
-    if device.type == 'cuda':
-        model = model.half()
-    model = model.to(device)
-    print("Model loaded successfully!")
+        weights = fix_model_keys(weights)
+        model.load_state_dict(weights, strict=True)
+        model.eval()
+        if device.type == 'cuda':
+            model = model.half()
+        model = model.to(device)
+        print("PyTorch model (net_g_latest.pth) loaded successfully!")
 
-except Exception as e:
-    print(f"Error loading model: {e}")
+    except Exception as e:
+        print(f"PyTorch model load failed ({e}), trying ONNX fallback...")
+        model = None
+
+if model is None:
+    try:
+        import onnxruntime as ort
+        ort_session = ort.InferenceSession(
+            'models/model.onnx',
+            providers=['CPUExecutionProvider']
+        )
+        USE_ONNX = True
+        print("ONNX model (model.onnx) loaded — running on CPU.")
+    except Exception as e:
+        print(f"CRITICAL: No model could be loaded! {e}")
 
 # --- 4. TILING FUNCTION ---
 def tile_process(img, scale=4, tile_size=192, tile_pad=10):
@@ -151,13 +177,53 @@ def tensor2img(tensor):
     output = (output * 255.0).round().astype(np.uint8)
     return output
 
+def tile_process_onnx(img_np, scale=4, tile_size=192, tile_pad=10):
+    _, _, h, w = img_np.shape
+    output = np.zeros((1, 3, h * scale, w * scale), dtype=np.float32)
+    input_name = ort_session.get_inputs()[0].name
+
+    for i in range(0, h, tile_size):
+        for j in range(0, w, tile_size):
+            h_start, w_start = i, j
+            h_end = min(h_start + tile_size, h)
+            w_end = min(w_start + tile_size, w)
+
+            input_tile = img_np[:, :, h_start:h_end, w_start:w_end]
+
+            pad_h_top = tile_pad if h_start > 0 else 0
+            pad_h_bot = tile_pad if h_end < h else 0
+            pad_w_left = tile_pad if w_start > 0 else 0
+            pad_w_right = tile_pad if w_end < w else 0
+
+            th, tw = input_tile.shape[2], input_tile.shape[3]
+            can_reflect = th > pad_h_top and th > pad_h_bot and tw > pad_w_left and tw > pad_w_right
+            pad_mode = 'reflect' if can_reflect else 'edge'
+
+            input_tile_padded = np.pad(
+                input_tile,
+                ((0, 0), (0, 0), (pad_h_top, pad_h_bot), (pad_w_left, pad_w_right)),
+                mode=pad_mode
+            )
+
+            out_padded = ort_session.run(None, {input_name: input_tile_padded})[0]
+
+            crop_h2 = out_padded.shape[2] - pad_h_bot * scale
+            crop_w2 = out_padded.shape[3] - pad_w_right * scale
+            out_tile = out_padded[:, :, pad_h_top * scale:crop_h2, pad_w_left * scale:crop_w2]
+
+            output[:, :,
+                   h_start * scale:h_start * scale + out_tile.shape[2],
+                   w_start * scale:w_start * scale + out_tile.shape[3]] = out_tile
+
+    return output
+
 # --- 5. API ENDPOINTS ---
 @app.get("/health")
 async def health_check():
     return {
         "status": "ok",
-        "device": str(device),
-        "cuda_available": torch.cuda.is_available(),
+        "mode": "onnx-cpu" if USE_ONNX else f"pytorch-{device}",
+        "cuda_available": bool(TORCH_AVAILABLE and torch and torch.cuda.is_available()),
     }
 
 @app.post("/enhance")
@@ -184,15 +250,20 @@ async def enhance_image(
 
         original_h, original_w = img.shape[:2]
 
-        # B. Preprocess
-        img_f = img.astype(np.float32) / 255.
-        img_t = torch.from_numpy(np.transpose(img_f[:, :, [2, 1, 0]], (2, 0, 1))).float()
-        img_t = img_t.unsqueeze(0).to(device)
-
-        # C. Inference (always 4x via tiling)
+        # B. Preprocess + C. Inference (always 4x via tiling)
         print("Starting AI Inference (Tiling Mode)...")
-        output = tile_process(img_t, scale=4, tile_size=192, tile_pad=10)
-        output_img = tensor2img(output)
+        img_f = img.astype(np.float32) / 255.
+
+        if USE_ONNX:
+            img_np = np.transpose(img_f[:, :, [2, 1, 0]], (2, 0, 1))[np.newaxis, ...].astype(np.float32)
+            out_np = tile_process_onnx(img_np, scale=4, tile_size=192, tile_pad=10)
+            out_np = np.transpose(out_np.squeeze(0)[[2, 1, 0], :, :], (1, 2, 0))
+            output_img = np.clip(out_np * 255, 0, 255).astype(np.uint8)
+        else:
+            img_t = torch.from_numpy(np.transpose(img_f[:, :, [2, 1, 0]], (2, 0, 1))).float()
+            img_t = img_t.unsqueeze(0).to(device)
+            output = tile_process(img_t, scale=4, tile_size=192, tile_pad=10)
+            output_img = tensor2img(output)
 
         # D. If user requested 2x, downsample the 4x result by 50%
         if scale == 2:
