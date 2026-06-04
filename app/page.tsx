@@ -31,28 +31,37 @@ interface Filters {
 const DEFAULT_FILTERS: Filters = { brightness: 1, contrast: 1, saturation: 1 };
 
 export default function Page() {
-  const { user, addHistory, history } = useAuth();
+  const { user, addHistory, history, loading } = useAuth();
 
-  const [file, setFile]                           = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl]               = useState<string | null>(null);
-  const [enhancedUrl, setEnhancedUrl]             = useState<string | null>(null);
-  const [isProcessing, setIsProcessing]           = useState(false);
-  const [scale, setScale]                         = useState<number>(4);
-  const [compareActive, setCompareActive]         = useState(false);
-  const [zoomOpen, setZoomOpen]                   = useState(false);
-  const [processingTime, setProcessingTime]       = useState<number | null>(null);
-  const [originalDimensions, setOriginalDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [outputDimensions, setOutputDimensions]   = useState<{ width: number; height: number } | null>(null);
-  const [originalFileSize, setOriginalFileSize]   = useState<number | null>(null);
-  const [filters, setFilters]                     = useState<Filters>(DEFAULT_FILTERS);
-  const [toasts, setToasts]                       = useState<ToastMessage[]>([]);
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [enhancedUrl, setEnhancedUrl] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [scale, setScale] = useState<number>(4);
+  const [compareActive, setCompareActive] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const [processingTime, setProcessingTime] = useState<number | null>(null);
+  const [originalDimensions, setOriginalDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [outputDimensions, setOutputDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [originalFileSize, setOriginalFileSize] = useState<number | null>(null);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const filterStyle = `brightness(${filters.brightness}) contrast(${filters.contrast}) saturate(${filters.saturation})`;
 
-  const addToast = useCallback((type: ToastMessage["type"], message: string) => {
-    const id = `${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, type, message }]);
-  }, []);
+  const addToast = useCallback(
+    (type: ToastMessage["type"], message: string) => {
+      const id = `${Date.now()}-${Math.random()}`;
+      setToasts((prev) => [...prev, { id, type, message }]);
+    },
+    [],
+  );
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -75,18 +84,27 @@ export default function Page() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Enter → enhance (when image ready, not already processing, no modal open)
-      if (e.key === "Enter" && previewUrl && !isProcessing && !enhancedUrl && !zoomOpen) {
+      if (
+        e.key === "Enter" &&
+        previewUrl &&
+        !isProcessing &&
+        !enhancedUrl &&
+        !zoomOpen
+      ) {
         e.preventDefault();
         enhanceImage();
       }
       // Escape → close zoom modal, or reset if no image processing
       if (e.key === "Escape") {
-        if (zoomOpen) { setZoomOpen(false); return; }
+        if (zoomOpen) {
+          setZoomOpen(false);
+          return;
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewUrl, isProcessing, enhancedUrl, zoomOpen]);
 
   const enhanceImage = async () => {
@@ -103,14 +121,21 @@ export default function Page() {
       formData.append("file", file);
       formData.append("scale", String(scale));
 
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:8000";
-      const res = await fetch(`${backendUrl}/enhance`, { method: "POST", body: formData });
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:8000";
+      const res = await fetch(`${backendUrl}/enhance`, {
+        method: "POST",
+        body: formData,
+      });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: "Unknown error" }));
-        addToast("error", res.status === 429
-          ? "Rate limit reached. Please wait a moment before trying again."
-          : `Enhancement failed: ${err.detail || res.statusText}`);
+        addToast(
+          "error",
+          res.status === 429
+            ? "Rate limit reached. Please wait a moment before trying again."
+            : `Enhancement failed: ${err.detail || res.statusText}`,
+        );
         return;
       }
 
@@ -120,24 +145,72 @@ export default function Page() {
       setOriginalDimensions(data.original_dimensions);
       setOutputDimensions(data.output_dimensions);
 
-      addToast("success", `Done in ${data.processing_time_seconds}s — ${data.scale}x upscale complete!`);
+      addToast(
+        "success",
+        `Done in ${data.processing_time_seconds}s — ${data.scale}x upscale complete!`,
+      );
 
-      if (user) await addHistory(originalCloudUrl, data.enhanced_url);
+      if (user) await addHistory(originalCloudUrl, data.enhanced_url, data.processing_time_seconds);
     } catch (e) {
       console.error(e);
-      addToast("error", "Could not reach the Python backend. Is it running on port 8000?");
+      addToast(
+        "error",
+        "Could not reach the Python backend. Is it running on port 8000?",
+      );
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const showStats = !!(enhancedUrl && originalFileSize && originalDimensions && outputDimensions && processingTime);
+  const showStats = !!(
+    enhancedUrl &&
+    originalFileSize &&
+    originalDimensions &&
+    outputDimensions &&
+    processingTime
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200">
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-12">
+        {/* Hero section — shown only before an image is uploaded */}
+        {!previewUrl && !isProcessing && (
+          <div className="text-center mb-12">
+            <h1 className="text-5xl sm:text-6xl font-black text-white mb-4 leading-tight">
+              Enhance Images with{" "}
+              <span className="bg-clip-text text-transparent bg-linear-to-r from-indigo-400 to-cyan-400">
+                Real-ESRGAN AI
+              </span>
+            </h1>
+            <p className="text-lg text-slate-400 max-w-2xl mx-auto mb-8">
+              Upscale your images up to 4× with AI-powered super-resolution. Sharp details, no blur — in seconds.
+            </p>
+            <div className="flex flex-wrap justify-center gap-6 text-sm text-slate-400">
+              <span className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                2× and 4× upscaling
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                PNG · JPG · WebP
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                History saved to your account
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Compare view */}
         {compareActive && previewUrl && enhancedUrl ? (
@@ -147,7 +220,9 @@ export default function Page() {
         ) : (
           <section className="grid lg:grid-cols-2 gap-6 sm:gap-8 mb-6">
             <div>
-              <h2 className="text-xl font-semibold mb-4 text-indigo-400">Step 1: Upload Source</h2>
+              <h2 className="text-xl font-semibold mb-4 text-indigo-400">
+                Step 1: Upload Source
+              </h2>
               {previewUrl ? (
                 <ImagePreview url={previewUrl} onReset={handleReset} />
               ) : (
@@ -162,7 +237,9 @@ export default function Page() {
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold mb-4 text-cyan-400">Step 2: AI Result</h2>
+              <h2 className="text-xl font-semibold mb-4 text-cyan-400">
+                Step 2: AI Result
+              </h2>
               <EnhancedPreview
                 isProcessing={isProcessing}
                 imageUrl={enhancedUrl}
@@ -192,6 +269,7 @@ export default function Page() {
 
         <ActionBar
           onEnhance={enhanceImage}
+          onReset={handleReset}
           disabled={!previewUrl || isProcessing}
           enhancedUrl={enhancedUrl}
           scale={scale}
@@ -205,7 +283,11 @@ export default function Page() {
         {/* Keyboard hint */}
         {previewUrl && !enhancedUrl && !isProcessing && (
           <p className="text-center text-slate-600 text-xs mt-3">
-            Press <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono text-[11px]">Enter</kbd> to enhance
+            Press{" "}
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono text-[11px]">
+              Enter
+            </kbd>{" "}
+            to enhance
           </p>
         )}
 

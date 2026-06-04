@@ -29,6 +29,7 @@ export interface HistoryItem {
   enhancedUrl: string;
   createdAt: string;
   status: string;
+  processingTime?: number;
 }
 
 interface AuthContextType {
@@ -37,7 +38,7 @@ interface AuthContextType {
   loading: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  addHistory: (originalUrl: string, enhancedUrl: string) => Promise<void>;
+  addHistory: (originalUrl: string, enhancedUrl: string, processingTime?: number) => Promise<void>;
   clearHistory: () => Promise<void>;
 }
 
@@ -87,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setHistory([]);
   };
 
-  const addHistory = async (originalUrl: string, enhancedUrl: string) => {
+  const addHistory = async (originalUrl: string, enhancedUrl: string, processingTime?: number) => {
     if (!user) return;
     try {
       const entry: Omit<HistoryItem, "id"> = {
@@ -96,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         enhancedUrl,
         createdAt: new Date().toISOString(),
         status: "completed",
+        ...(processingTime !== undefined && { processingTime }),
       };
       await addDoc(collection(db, "enhancements"), entry as DocumentData);
     } catch (e) {

@@ -6,6 +6,7 @@ type DownloadFormat = "webp" | "png" | "jpg";
 
 interface Props {
   onEnhance: () => void;
+  onReset?: () => void;
   disabled: boolean;
   enhancedUrl: string | null;
   scale: number;
@@ -23,7 +24,7 @@ const FORMAT_MIME: Record<DownloadFormat, string> = {
 };
 
 export default function ActionBar({
-  onEnhance, disabled, enhancedUrl, scale, onScaleChange,
+  onEnhance, onReset, disabled, enhancedUrl, scale, onScaleChange,
   onCompareToggle, showCompare, compareActive, filterStyle,
 }: Props) {
   const [isDownloading, setIsDownloading]   = useState(false);
@@ -199,7 +200,7 @@ export default function ActionBar({
           </div>
 
           <button
-            onClick={() => window.location.reload()}
+            onClick={onReset ?? (() => window.location.reload())}
             className="text-slate-500 hover:text-white text-sm font-medium transition"
           >
             Enhance another image

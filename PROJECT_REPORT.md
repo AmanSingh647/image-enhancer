@@ -133,35 +133,54 @@ User sees enhanced image in EnhancedPreview
 ```
 RootLayout (app/layout.tsx)
   └── AuthProvider (hooks/useAuth.tsx)
-        └── Page (app/page.tsx)
-              ├── Navbar
-              │     ├── [logged out] "Get Started Free" button -> login()
-              │     └── [logged in]  Avatar + displayName + Logout
-              │
-              ├── [compareActive=false]
-              │     ├── ImageUploader  (drag-drop / click-to-browse)
-              │     │     └── validates: type + size + drag state
-              │     └── EnhancedPreview
-              │           ├── [isProcessing] spinner + elapsed timer + steps
-              │           ├── [imageUrl set] image + dimensions badge + time badge
-              │           └── [idle] placeholder
-              │
-              ├── [compareActive=true]
-              │     └── CompareSlider (beforeUrl, afterUrl)
-              │           ├── draggable divider (mouse + touch)
-              │           ├── Before image (clip-path: left side)
-              │           └── After image  (full, behind)
-              │
-              ├── ActionBar
-              │     ├── [no result] Scale selector [2x][4x] + Generate button
-              │     └── [result]    Download (.webp/.png/.jpg) + Share + Compare toggle
-              │
-              ├── HistorySection  (only if user logged in + history.length > 0)
-              │     └── HistoryItem grid
-              │           └── hover overlay: Open | Download | Delete
-              │
-              └── ToastContainer (fixed bottom-right)
-                    └── Toast (auto-dismiss 4s, success/error/info)
+        ├── Page (app/page.tsx)
+        │     ├── Navbar
+        │     │     ├── [logged out] "Get Started Free" button -> login()
+        │     │     └── [logged in]  Avatar + displayName + Profile link + Logout
+        │     │
+        │     ├── [!previewUrl] Hero Section (headline, tagline, feature bullets)
+        │     │
+        │     ├── [compareActive=false]
+        │     │     ├── [!previewUrl] ImageUploader  (drag-drop / click-to-browse)
+        │     │     │     └── validates: type + size + drag state
+        │     │     ├── [previewUrl]  ImagePreview  (original image + remove button)
+        │     │     └── EnhancedPreview
+        │     │           ├── [isProcessing] spinner + elapsed timer + steps
+        │     │           ├── [imageUrl set] image + zoom button + dimensions/time badges
+        │     │           └── [idle] placeholder
+        │     │           + PostProcessing  (brightness/contrast/saturation — after enhancement)
+        │     │
+        │     ├── [compareActive=true]
+        │     │     └── CompareSlider (beforeUrl, afterUrl)
+        │     │           ├── draggable divider (mouse + touch)
+        │     │           ├── Before image (clip-path: left side)
+        │     │           └── After image  (full, behind)
+        │     │
+        │     ├── ImageStats  (resolution before→after, input size, time — after enhancement)
+        │     │
+        │     ├── ActionBar
+        │     │     ├── [no result] Scale selector [2x][4x] + Generate button
+        │     │     └── [result]    Download (.webp/.png/.jpg) + Copy Image + Share + Compare toggle
+        │     │           + "Enhance another image" → handleReset()
+        │     │
+        │     ├── Keyboard hint  ("Press Enter to enhance")
+        │     │
+        │     ├── HistorySection  (only if user logged in + history.length > 0)
+        │     │     └── HistoryItem grid
+        │     │           └── hover overlay: Compare | Open | Download | Delete
+        │     │           + Compare Modal (CompareSlider in overlay)
+        │     │
+        │     ├── ToastContainer (fixed bottom-right)
+        │     │     └── Toast (auto-dismiss 4s, success/error/info)
+        │     │
+        │     └── [zoomOpen=true] ImageZoomModal
+        │           ├── scroll to zoom (1x–8x), drag to pan (mouse + touch)
+        │           ├── zoom in / zoom out / reset controls
+        │           └── Escape to close
+        │
+        └── ProfilePage (app/profile/page.tsx)
+              ├── Stats grid (total enhanced, account name, member since)
+              └── Danger Zone — Clear All History button
 ```
 
 ---
@@ -368,6 +387,19 @@ ALLOWED_ORIGIN=http://localhost:3000 # CORS allowed origin
 | App metadata (title/description) | Done   | app/layout.tsx                     |
 | Mobile responsive layout         | Done   | app/page.tsx (sm: breakpoints)     |
 | Custom scrollbar styling         | Done   | app/globals.css                    |
+| Post-processing sliders          | Done   | components/PostProcessing.tsx      |
+| Image stats panel                | Done   | components/ImageStats.tsx          |
+| Full-screen zoom modal (1x–8x)   | Done   | components/ImageZoomModal.tsx      |
+| Scroll-to-zoom + drag-to-pan     | Done   | components/ImageZoomModal.tsx      |
+| Copy image to clipboard          | Done   | components/ActionBar.tsx           |
+| Filter baking into downloads     | Done   | ActionBar.tsx (Canvas API)         |
+| Before/After compare in history  | Done   | components/HistorySection.tsx      |
+| Keyboard shortcut (Enter)        | Done   | app/page.tsx (enhanceImage)        |
+| Keyboard shortcut (Escape)       | Done   | components/ImageZoomModal.tsx      |
+| Auth loading state               | Done   | app/page.tsx (useAuth loading)     |
+| Hero landing section             | Done   | app/page.tsx                       |
+| Profile page with stats          | Done   | app/profile/page.tsx               |
+| Clear all history                | Done   | app/profile/page.tsx + useAuth     |
 
 ---
 
@@ -396,17 +428,22 @@ image-enhancer/
     page.tsx              Main page — orchestrates all state and logic
     layout.tsx            Root layout, AuthProvider wrapper, metadata
     globals.css           Global styles, scrollbar, compare slider
+    profile/
+      page.tsx            Profile page — stats, clear history danger zone
     api/
       sign-cloudinary/
         route.ts          Server-side Cloudinary signature generator
   components/
-    Navbar.tsx            Top nav — login/logout, user avatar
+    Navbar.tsx            Top nav — login/logout, user avatar, profile link
     ImageUploader.tsx     Drag-and-drop + click file input
-    ImagePreview.tsx      Shows original image with reset button
-    EnhancePreview.tsx    Shows result, loading state, elapsed timer
+    ImagePreview.tsx      Shows original image with remove button
+    EnhancePreview.tsx    Shows result, loading state, elapsed timer, zoom button
     CompareSlider.tsx     Before/after drag comparison slider
-    ActionBar.tsx         Scale selector, Generate/Download/Share buttons
-    HistorySection.tsx    History grid with hover actions
+    ActionBar.tsx         Scale selector, Generate/Download/Copy/Share buttons
+    PostProcessing.tsx    Brightness/contrast/saturation sliders (live preview)
+    ImageStats.tsx        Resolution, input size, processing time stats panel
+    ImageZoomModal.tsx    Full-screen zoom modal (scroll/drag/touch, 1x–8x)
+    HistorySection.tsx    History grid with hover actions + compare modal
     Toast.tsx             Toast notification system
   hooks/
     useAuth.tsx           Auth context — login, logout, history, types
