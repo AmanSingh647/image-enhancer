@@ -250,13 +250,20 @@ async def enhance_image(
 
         original_h, original_w = img.shape[:2]
 
+        # Cap input size on CPU deployment to avoid OOM
+        MAX_DIM = 512
+        if original_h > MAX_DIM or original_w > MAX_DIM:
+            ratio = MAX_DIM / max(original_h, original_w)
+            img = cv2.resize(img, (int(original_w * ratio), int(original_h * ratio)), interpolation=cv2.INTER_AREA)
+            original_h, original_w = img.shape[:2]
+
         # B. Preprocess + C. Inference (always 4x via tiling)
         print("Starting AI Inference (Tiling Mode)...")
         img_f = img.astype(np.float32) / 255.
 
         if USE_ONNX:
             img_np = np.transpose(img_f[:, :, [2, 1, 0]], (2, 0, 1))[np.newaxis, ...].astype(np.float32)
-            out_np = tile_process_onnx(img_np, scale=4, tile_size=192, tile_pad=10)
+            out_np = tile_process_onnx(img_np, scale=4, tile_size=64, tile_pad=8)
             out_np = np.transpose(out_np.squeeze(0)[[2, 1, 0], :, :], (1, 2, 0))
             output_img = np.clip(out_np * 255, 0, 255).astype(np.uint8)
         else:
